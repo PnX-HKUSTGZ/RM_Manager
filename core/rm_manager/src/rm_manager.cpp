@@ -15,7 +15,7 @@ RMManagerNode::RMManagerNode(std::string name) : Node(name) {
         image_status_pub_ = this->create_publisher<std_msgs::msg::Bool>(std::string(this->get_name()) + "/image_port_status", 10);
         referee_status_pub_ = this->create_publisher<std_msgs::msg::Bool>(std::string(this->get_name()) + "/referee_port_status", 10);
         // 创建遥控器数据发布者
-        remoto_controll_pub_ = this->create_publisher<rm_message::msg::RemotoControll>(std::string(this->get_name()) + "/remoto_controll", 10);
+        remoto_control_pub_ = this->create_publisher<rm_message::msg::RemoteControl>(std::string(this->get_name()) + "/remote_control", 10);
     }
     catch(const std::exception& e){
         RCLCPP_ERROR(this->get_logger(), "Exception when create publishers: %s", e.what());
@@ -239,14 +239,14 @@ bool RMManagerNode::_process_image_own_message(const std::vector<uint8_t>& data)
         return false;
     }
 
-    rm_message::msg::RemotoControll rc_msg=_remote_control_data_to_msg(msg);
-    remoto_controll_pub_->publish(rc_msg);
+    rm_message::msg::RemoteControl rc_msg=_remote_control_data_to_msg(msg);
+    remoto_control_pub_->publish(rc_msg);
     return true;
 
 }
 
-rm_message::msg::RemotoControll _remote_control_data_to_msg(const RemoteControlData& data){
-    rm_message::msg::RemotoControll msg;
+rm_message::msg::RemoteControl _remote_control_data_to_msg(const RemoteControlData& data){
+    rm_message::msg::RemoteControl msg;
     msg.chanal0 = data.chanal0;
     msg.chanal1 = data.chanal1;
     msg.chanal2 = data.chanal2;

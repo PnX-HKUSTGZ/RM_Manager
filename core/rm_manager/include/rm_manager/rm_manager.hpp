@@ -3,7 +3,7 @@
 
 #include "rm_message/msg/general_message.hpp"
 #include "rm_message/msg/send_message.hpp"
-#include "rm_message/msg/remoto_controll.hpp"
+#include "rm_message/msg/remote_control.hpp"
 
 #include "rm_manager/uart_driver.hpp"
 
@@ -102,7 +102,7 @@ private:
     std::mutex general_pubs_mutex_;
 
     // 遥控器数据的pub
-    std::shared_ptr<rclcpp::Publisher<rm_message::msg::RemotoControll>> remoto_controll_pub_;
+    std::shared_ptr<rclcpp::Publisher<rm_message::msg::RemoteControl>> remoto_control_pub_;
 
     /**
      * @brief 得到对应command id 的pub
@@ -132,7 +132,7 @@ private:
 
 }; // class RMManagerNode
 
-rm_message::msg::RemotoControll _remote_control_data_to_msg(const RemoteControlData& data);
+rm_message::msg::RemoteControl _remote_control_data_to_msg(const RemoteControlData& data);
 
 } // namespace RMManager
 
