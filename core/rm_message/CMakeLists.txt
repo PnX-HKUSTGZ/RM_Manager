@@ -17,6 +17,7 @@ find_package(rosidl_default_generators REQUIRED)
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/GeneralMessage.msg"
   "msg/SendMessage.msg"
+  "msg/RemotoControll.msg"
 )
 
 if(BUILD_TESTING)

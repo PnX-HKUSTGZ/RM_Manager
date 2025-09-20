@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.8)
+cmake_minimum_required(VERSION 3.22)
 project(rm_manager)
 
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
@@ -10,6 +10,23 @@ find_package(ament_cmake REQUIRED)
 # uncomment the following section in order to fill in
 # further dependencies manually.
 # find_package(<dependency> REQUIRED)
+
+
+find_package(rclcpp REQUIRED)
+find_package(rm_message REQUIRED)
+find_package(std_msgs REQUIRED)
+find_package(Boost REQUIRED COMPONENTS thread)
+
+add_executable(rm_manager src/rm_manager.cpp src/main.cpp src/util.cpp)
+
+ament_target_dependencies(rm_manager rclcpp rm_message Boost std_msgs)
+
+target_include_directories(rm_manager PRIVATE
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>)
+
+install(TARGETS rm_manager
+  DESTINATION lib/${PROJECT_NAME})
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)

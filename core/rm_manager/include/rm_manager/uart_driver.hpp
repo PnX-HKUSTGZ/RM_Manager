@@ -469,6 +469,9 @@ private:
         std::lock_guard<std::mutex> lock(write_queue_mutex_);
         write_in_progress_ = false;
 
+        (void)bytes_transferred;
+        (void)message_holder;
+
         if (!error) {
             // std::cout << "Sent " << bytes_transferred << " bytes." << std::endl;
             write_queue_.pop_front();
