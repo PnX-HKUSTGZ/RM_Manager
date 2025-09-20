@@ -10,101 +10,134 @@ RMManagerNode::RMManagerNode(std::string name) : Node(name) {
     this->declare_parameter<std::string>("referee_port", "/dev/ttyRef");
     std::string image_port = this->get_parameter("image_port").as_string();
     std::string referee_port = this->get_parameter("referee_port").as_string();
-    if(image_port != ""){
-        image_uart_ = std::make_shared<SerialCommunicator>(image_port, 921600);
-        image_uart_->register_read_callback( std::bind(&RMManagerNode::_read_callback, this, std::placeholders::_1, std::ref(image_send_)) );
+    try{
+        // 创建状态发布者
+        image_status_pub_ = this->create_publisher<std_msgs::msg::Bool>(std::string(this->get_name()) + "/image_port_status", 10);
+        referee_status_pub_ = this->create_publisher<std_msgs::msg::Bool>(std::string(this->get_name()) + "/referee_port_status", 10);
+        // 创建遥控器数据发布者
+        remoto_controll_pub_ = this->create_publisher<rm_message::msg::RemotoControll>(std::string(this->get_name()) + "/remoto_controll", 10);
     }
-    if(referee_port != ""){
-        image_uart_ = std::make_shared<SerialCommunicator>(image_port, 921600);
-        referee_uart_->register_read_callback( std::bind(&RMManagerNode::_read_callback, this, std::placeholders::_1, std::ref(referee_send_)) );
+    catch(const std::exception& e){
+        RCLCPP_ERROR(this->get_logger(), "Exception when create publishers: %s", e.what());
+    }
+    RCLCPP_INFO(this->get_logger(), "Publishers initialized.");
+
+
+    try{
+        // 创建监测图传链路状态的线程
+        if(image_port != "" && image_port != "None"){
+            image_check_thread_ = std::make_unique<std::thread>([this]() {
+                int nomessage_times = 0;
+                rclcpp::Rate rate(1); // 1 Hz
+                while (rclcpp::ok()) {
+                    rate.sleep();
+                    if (image_send_) {
+                        nomessage_times = 0;
+                        image_send_ = false;
+                    } else {
+                        nomessage_times++;
+                    }
+
+
+                    // 检查串口状态
+                    if (!image_uart_->isPortOK()){
+                        if(image_uart_->reopenPort() && image_uart_->startRead()){
+                            RCLCPP_INFO(this->get_logger(), "Error Occurred: Image port re-opened and reading started successfully.");
+                        }
+                        else{
+                            nomessage_times=3;
+                            RCLCPP_ERROR(this->get_logger(), "Error Occurred: Image port re-open failed.");
+                        }
+                    }
+
+                    std_msgs::msg::Bool status_msg;
+                    if (nomessage_times >= 3) {
+                        status_msg.data = false;
+                        RCLCPP_WARN(this->get_logger(), "Image link seems offline!");
+                    } else {
+                        status_msg.data = true;
+                    }
+                    image_status_pub_->publish(status_msg);
+                }
+            });
+        }
+    }
+    catch(const std::exception& e){
+        RCLCPP_ERROR(this->get_logger(), "Exception when create image check thread: %s", e.what());
     }
 
-    // 创建状态发布者
-    image_status_pub_ = this->create_publisher<std_msgs::msg::Bool>("image_port_status", 10);
-    referee_status_pub_ = this->create_publisher<std_msgs::msg::Bool>("referee_port_status", 10);
-    remoto_controll_pub_ = this->create_publisher<rm_message::msg::RemotoControll>("remoto_controll", 10);
+    try{
+        // 创建监测裁判系统链路状态的线程
+        if(referee_port != "" && referee_port != "None"){
+            referee_check_thread_ = std::make_unique<std::thread>([this]() {
+                int nomessage_times = 0;
+                rclcpp::Rate rate(1); // 1 Hz
+                while (rclcpp::ok()) {
+                    rate.sleep();
+                    if (referee_send_) {
+                        nomessage_times = 0;
+                        referee_send_ = false;
+                    } else {
+                        nomessage_times++;
+                    }
+
+                    // 检查串口状态
+                    if (!referee_uart_->isPortOK()){
+                        if(referee_uart_->reopenPort() && referee_uart_->startRead()){
+                            RCLCPP_INFO(this->get_logger(), "Error Occurred: Referee port re-opened and reading started successfully.");
+                        }
+                        else{
+                            nomessage_times=3;
+                            RCLCPP_ERROR(this->get_logger(), "Error Occurred: Referee port re-open failed.");
+                        }
+                    }
+
+                    std_msgs::msg::Bool status_msg;
+                    if (nomessage_times >= 3) {
+                        status_msg.data = false;
+                        RCLCPP_WARN(this->get_logger(), "Referee link seems offline!");
+                    } else {
+                        status_msg.data = true;
+                    }
+                    referee_status_pub_->publish(status_msg);
+                }
+            });
+        }
+    }
+    catch(const std::exception& e){
+        RCLCPP_ERROR(this->get_logger(), "Exception when create referee check thread: %s", e.what());
+    }
+
+    RCLCPP_INFO(this->get_logger(), "Link check threads initialized.");
+        
+    try{
+
+        if(image_port != ""){
+            image_uart_ = std::make_shared<SerialCommunicator>(image_port, 921600);
+            image_uart_->register_read_callback( std::bind(&RMManagerNode::_read_callback, this, std::placeholders::_1, std::ref(image_send_)) );
+        }
+        if(referee_port != ""){
+            referee_uart_ = std::make_shared<SerialCommunicator>(referee_port, 921600);
+            referee_uart_->register_read_callback( std::bind(&RMManagerNode::_read_callback, this, std::placeholders::_1, std::ref(referee_send_)) );
+        }
+    }
+    catch(const std::exception& e){
+        RCLCPP_ERROR(this->get_logger(), "Exception when open port: %s", e.what());
+    }
 
     // 启动串口读取
     image_uart_->startRead();
     referee_uart_->startRead();
 
-    // 创建监测图传链路状态的线程
-
-    image_check_thread_ = std::make_unique<std::thread>([this]() {
-        int nomessage_times = 0;
-        rclcpp::Rate rate(1); // 1 Hz
-        while (rclcpp::ok()) {
-            rate.sleep();
-            if (image_send_) {
-                nomessage_times = 0;
-                image_send_ = false;
-            } else {
-                nomessage_times++;
-            }
-
-
-            // 检查串口状态
-            if (!image_uart_->isPortOK()){
-                if(image_uart_->reopenPort() && image_uart_->startRead()){
-                    RCLCPP_INFO(this->get_logger(), "Error Occurred: Image port re-opened and reading started successfully.");
-                }
-                else{
-                    nomessage_times=3;
-                    RCLCPP_ERROR(this->get_logger(), "Error Occurred: Image port re-open failed.");
-                }
-            }
-
-            std_msgs::msg::Bool status_msg;
-            if (nomessage_times >= 3) {
-                status_msg.data = false;
-                RCLCPP_WARN(this->get_logger(), "Image link seems offline!");
-            } else {
-                status_msg.data = true;
-            }
-            image_status_pub_->publish(status_msg);
-        }
-    });
-
-    // 创建监测裁判系统链路状态的线程
-    referee_check_thread_ = std::make_unique<std::thread>([this]() {
-        int nomessage_times = 0;
-        rclcpp::Rate rate(1); // 1 Hz
-        while (rclcpp::ok()) {
-            rate.sleep();
-            if (referee_send_) {
-                nomessage_times = 0;
-                referee_send_ = false;
-            } else {
-                nomessage_times++;
-            }
-
-            // 检查串口状态
-            if (!referee_uart_->isPortOK()){
-                if(referee_uart_->reopenPort() && referee_uart_->startRead()){
-                    RCLCPP_INFO(this->get_logger(), "Error Occurred: Referee port re-opened and reading started successfully.");
-                }
-                else{
-                    nomessage_times=3;
-                    RCLCPP_ERROR(this->get_logger(), "Error Occurred: Referee port re-open failed.");
-                }
-            }
-
-            std_msgs::msg::Bool status_msg;
-            if (nomessage_times >= 3) {
-                status_msg.data = false;
-                RCLCPP_WARN(this->get_logger(), "Referee link seems offline!");
-            } else {
-                status_msg.data = true;
-            }
-            referee_status_pub_->publish(status_msg);
-        }
-    });
+    RCLCPP_INFO(this->get_logger(), "Serial ports initialized and start read.");
 
     // 创建接受数据的sub
     send_sub_ = this->create_subscription<rm_message::msg::SendMessage>(
             "send_message", 10,
             std::bind(&RMManagerNode::_send_sub_callback, this, std::placeholders::_1)
         );
+
+    RCLCPP_INFO(this->get_logger(), "RMManagerNode initialized.");
 
 }
 
@@ -136,6 +169,7 @@ std::weak_ptr<rclcpp::Publisher<rm_message::msg::GeneralMessage>> RMManagerNode:
 }
 
 void RMManagerNode::_read_callback(const std::vector<uint8_t>& data, std::atomic<bool>& link_status){
+
     // 检查前两位是不是 0xA9 0x53
     if(data.size() < 5){
         return;
