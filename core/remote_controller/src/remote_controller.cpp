@@ -50,7 +50,7 @@ void RemoteController::sendVel(const rm_message::msg::RemoteControl::SharedPtr m
     // Assuming chanal1 is linear x and chanal2 is angular z
     twist_msg.twist.linear.x = static_cast<double>(msg->chanal2 - 1024) / 660 * 0.5; // Scale as needed
     twist_msg.twist.linear.y = -static_cast<double>(msg->chanal3 - 1024) / 660 * 0.5; // Scale as needed
-    twist_msg.twist.angular.z = static_cast<double>(msg->chanal0 - 1024) / 660 * 0.5; // Scale as needed
+    twist_msg.twist.angular.z = -static_cast<double>(msg->chanal0 - 1024) / 660 * 0.5; // Scale as needed
     cmd_vel_pub_->publish(twist_msg);
     RCLCPP_DEBUG(this->get_logger(), "Published cmd_vel: linear.x=%.3f, angular.z=%.3f", twist_msg.twist.linear.x, twist_msg.twist.angular.z);
 }
