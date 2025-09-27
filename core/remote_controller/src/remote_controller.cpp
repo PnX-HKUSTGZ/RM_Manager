@@ -8,6 +8,24 @@ RemoteController::RemoteController(std::string name) : rclcpp::Node(name) {
     this->declare_parameter<std::string>("chasis_enable_topic", "/enable_chasis");
     this->declare_parameter<std::string>("arm_enable_topic", "/enable_arm");
 
+    this->declare_parameter<double>("max_x", 0.5);
+    this->declare_parameter<double>("max_y", 0.5);
+    this->declare_parameter<double>("max_z", 0.5);
+
+    try{
+        max_x = this->get_parameter("max_x").as_double();
+        max_y = this->get_parameter("max_y").as_double();
+        max_z = this->get_parameter("max_z").as_double();
+    }
+    catch (const rclcpp::ParameterTypeException & e) {
+        RCLCPP_ERROR(this->get_logger(), "Parameter type error: %s", e.what());
+        throw;
+    }
+    catch (const std::exception & e) {
+        RCLCPP_ERROR(this->get_logger(), "Exception while getting parameters: %s", e.what());
+        throw;
+    }
+
     try{
         cmd_vel_topic_ = this->get_parameter("cmd_vel_topic").as_string();
         remote_controller_topic_ = this->get_parameter("remote_controller_topic").as_string();
@@ -22,6 +40,15 @@ RemoteController::RemoteController(std::string name) : rclcpp::Node(name) {
         RCLCPP_ERROR(this->get_logger(), "Exception while getting parameters: %s", e.what());
         throw;
     }
+    // 输出参数值
+    RCLCPP_INFO(this->get_logger(), "Parameters:");
+    RCLCPP_INFO(this->get_logger(), "  cmd_vel_topic: %s", cmd_vel_topic_.c_str());
+    RCLCPP_INFO(this->get_logger(), "  remote_controller_topic: %s", remote_controller_topic_.c_str());
+    RCLCPP_INFO(this->get_logger(), "  chasis_enable_topic: %s", chasis_enable_topic_.c_str());
+    RCLCPP_INFO(this->get_logger(), "  arm_enable_topic: %s", arm_enable_topic_.c_str());
+    RCLCPP_INFO(this->get_logger(), "  max_x: %.2f", max_x);
+    RCLCPP_INFO(this->get_logger(), "  max_y: %.2f", max_y);
+    RCLCPP_INFO(this->get_logger(), "  max_z: %.2f", max_z);
 
     cmd_vel_pub_ = this->create_publisher<geometry_msgs::msg::TwistStamped>(cmd_vel_topic_, 10);
     cmd_vel_sub_ = this->create_subscription<rm_message::msg::RemoteControl>(
@@ -48,9 +75,9 @@ void RemoteController::sendVel(const rm_message::msg::RemoteControl::SharedPtr m
     twist_msg.header.stamp = this->now();
     twist_msg.header.frame_id = "base_link";
     // Assuming chanal1 is linear x and chanal2 is angular z
-    twist_msg.twist.linear.x = static_cast<double>(msg->chanal2 - 1024) / 660 * 0.5; // Scale as needed
-    twist_msg.twist.linear.y = -static_cast<double>(msg->chanal3 - 1024) / 660 * 0.5; // Scale as needed
-    twist_msg.twist.angular.z = -static_cast<double>(msg->chanal0 - 1024) / 660 * 0.5; // Scale as needed
+    twist_msg.twist.linear.x = static_cast<double>(msg->chanal2 - 1024) / 660 * max_x; // Scale as needed
+    twist_msg.twist.linear.y = -static_cast<double>(msg->chanal3 - 1024) / 660 * max_y; // Scale as needed
+    twist_msg.twist.angular.z = -static_cast<double>(msg->chanal0 - 1024) / 660 * max_z; // Scale as needed
     cmd_vel_pub_->publish(twist_msg);
     RCLCPP_DEBUG(this->get_logger(), "Published cmd_vel: linear.x=%.3f, angular.z=%.3f", twist_msg.twist.linear.x, twist_msg.twist.angular.z);
 }

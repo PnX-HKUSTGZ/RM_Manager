@@ -36,6 +36,10 @@ private:
 
     void sendEnableArm(const rm_message::msg::RemoteControl::SharedPtr msg);
 
+    float max_x = 0;
+    float max_y = 0;
+    float max_z = 0;
+
 };
 
 } // namespace RM_REMOTE_CONTROLLER
