@@ -159,69 +159,89 @@ std::weak_ptr<rclcpp::Publisher<rm_message::msg::GeneralMessage>> RMManagerNode:
     }
     else{
         // 创建新的publisher
-        std::string topic_name = std::string(this->get_name()) + "/" + uint16_to_hex_string_with_prefix(header);
-        auto pub = this->create_publisher<rm_message::msg::GeneralMessage>(topic_name, 10);
-        general_pubs_[header] = pub;
-        RCLCPP_INFO(this->get_logger(), "Created new publisher for topic: %s", topic_name.c_str());
-        return pub;
+        try{
+            std::string topic_name = std::string(this->get_name()) + "/" + uint16_to_hex_string_with_prefix(header);
+            auto pub = this->create_publisher<rm_message::msg::GeneralMessage>(topic_name, 10);
+            general_pubs_[header] = pub;
+            RCLCPP_INFO(this->get_logger(), "Created new publisher for topic: %s", topic_name.c_str());
+            return pub;
+        }
+        catch(const std::exception& e){
+            RCLCPP_ERROR(this->get_logger(), "Exception when create publisher for header 0x%04X: %s", header, e.what());
+            return std::weak_ptr<rclcpp::Publisher<rm_message::msg::GeneralMessage>>();
+        }
     }
 
 }
 
 void RMManagerNode::_read_callback(const std::vector<uint8_t>& data, std::atomic<bool>& link_status){
 
-    // 检查前两位是不是 0xA9 0x53
-    if(data.size() < 5){
-        return;
-    }
+    // 当前处理的待处理的数据起始位置
+    std::size_t start_ptr = 0;
 
-    if(data[0] == 0xA9 && data[1] == 0x53){
-        if(_process_image_own_message(data)){
-            link_status = true;
+    while(data.size() > start_ptr){
+
+        // 检查前两位是不是 0xA9 0x53
+        // 检查有没有帧头
+        if(data.size() - start_ptr < 5){
+            return;
         }
-        return;
-    }
 
-    if(data[0] != 0xA5){
-        return;
-    }
+        // 处理图传的特殊消息
+        if(data[start_ptr] == 0xA9 && data[start_ptr + 1] == 0x53){
+            if(_process_image_own_message(std::vector<uint8_t>(data.begin() + start_ptr, data.begin() + start_ptr + 21))){
+                link_status = true;
+            }
+            start_ptr += 21;
+            continue;
+        }
 
-    FrameHeader header;
-    memcpy(&header, data.data(), sizeof(FrameHeader));
+        if(data[start_ptr] != 0xA5){
+            return;
+        }
 
-    // 检查 帧头 crc8
-    if(Get_CRC8_Check_Sum((uint8_t*)&header, sizeof(FrameHeader)-1) != header.crc8){
-        RCLCPP_WARN(this->get_logger(), "CRC8 check failed!");
-        return;
-    }
+        FrameHeader header;
+        memcpy(&header, data.data() + start_ptr, sizeof(FrameHeader));
 
-    // 取出数据长度并检查
-    uint16_t data_length = header.data_length;
-    if(data_length + sizeof(FrameHeader) + 4 != data.size()){
-        RCLCPP_WARN(this->get_logger(), "Data length mismatch! Expected: %ld, Actual: %zu", data_length + sizeof(FrameHeader) + 4, data.size());
-        return;
-    }
+        // 检查 帧头 crc8
+        if(Get_CRC8_Check_Sum((uint8_t*)&header, sizeof(FrameHeader)-1) != header.crc8){
+            RCLCPP_WARN(this->get_logger(), "CRC8 check failed!");
+            return;
+        }
 
-    uint16_t command_id = *(uint16_t*)(data.data() + sizeof(FrameHeader));
+        // 取出数据长度并检查
+        uint16_t data_length = header.data_length;
+        // 计算整帧长度
+        uint16_t work_load = data_length + sizeof(FrameHeader) + 4;
+        if(work_load > data.size() - start_ptr){
+            RCLCPP_WARN(this->get_logger(), "Data length mismatch! Expected Bigger than: %d, Actual: %zu", work_load, data.size() - start_ptr);
+            return;
+        }
 
-    // 取出数据部分
-    std::vector<uint8_t> payload(data.begin() + sizeof(FrameHeader) + 2, data.begin() + sizeof(FrameHeader) + 2 + data_length);
+        uint16_t command_id = *(uint16_t*)(data.data() + start_ptr + sizeof(FrameHeader));
 
-    // 取出crc16
-    uint16_t received_crc = *(uint16_t*)(data.data() + sizeof(FrameHeader) + 2 + data_length);
-    if(Get_CRC16_Check_Sum(data.data(), data.size()-2 ) != received_crc){
-        RCLCPP_WARN(this->get_logger(), "CRC16 check failed!");
-        return;
-    }
+        // 取出数据部分
+        std::vector<uint8_t> payload(data.begin() + start_ptr + sizeof(FrameHeader) + 2, data.begin() + start_ptr + sizeof(FrameHeader) + 2 + data_length);
 
-    rm_message::msg::GeneralMessage msg;
-    msg.cmd_id = command_id;
-    msg.data_length = payload.size();
-    msg.data_payload = std::move(payload);
+        // 取出crc16
+        uint16_t received_crc = *(uint16_t*)(data.data() + start_ptr + sizeof(FrameHeader) + 2 + data_length);
+        if(Get_CRC16_Check_Sum(data.data() + start_ptr, work_load-2 ) != received_crc){
+            RCLCPP_WARN(this->get_logger(), "CRC16 check failed!");
+            start_ptr += work_load;
+            continue;
+        }
 
-    auto pub_weak = _get_general_pub(command_id);
-    if(auto pub = pub_weak.lock()){
-        pub->publish(msg);
+        rm_message::msg::GeneralMessage msg;
+        msg.cmd_id = command_id;
+        msg.data_length = payload.size();
+        msg.data_payload = std::move(payload);
+
+        auto pub_weak = _get_general_pub(command_id);
+        if(auto pub = pub_weak.lock()){
+            pub->publish(msg);
+        }
+
+        start_ptr += work_load;
     }
 }
 

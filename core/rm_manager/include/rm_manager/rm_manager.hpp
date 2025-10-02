@@ -77,7 +77,12 @@ private:
     // 裁判系统链路
     std::shared_ptr<SerialCommunicator> referee_uart_;
 
-    // 处理接受到的数据的回调函数
+    /**
+     * @brief 处理接受到的数据的回调函数，分割数据
+     * 
+     * @param data  接收到的数据
+     * @param link_status 链路状态的标志位
+     */
     void _read_callback(const std::vector<uint8_t>& data, std::atomic<bool>& link_status);
 
     // 图传链路是否发送了消息
@@ -129,6 +134,8 @@ private:
      * @return false 
      */
     bool _process_image_own_message(const std::vector<uint8_t>& data);
+
+    // void _
 
 }; // class RMManagerNode
 
