@@ -8,14 +8,75 @@ RMManagerNode::RMManagerNode(std::string name) : Node(name) {
     // 初始化串口对象
     this->declare_parameter<std::string>("image_port", "/dev/ttyImage");
     this->declare_parameter<std::string>("referee_port", "/dev/ttyRef");
+    this->declare_parameter<std::vector<std::string>>("command_topics", std::vector<std::string>{});
+    this->declare_parameter<std::vector<int>>("command_code", std::vector<int>{});
+    this->declare_parameter<std::string>("remote_control_topic", remote_control_topic_);
+
+    remote_control_topic_ = this->get_parameter("remote_control_topic").as_string();
+    custom_command_topics_ = this->get_parameter("command_topics").as_string_array();
+    custom_command_codes_ = this->get_parameter("command_code").as_integer_array();
     std::string image_port = this->get_parameter("image_port").as_string();
     std::string referee_port = this->get_parameter("referee_port").as_string();
+
+    // 更新 default_command_topics
+    if(custom_command_topics_.size() != custom_command_codes_.size()){
+        RCLCPP_ERROR(this->get_logger(), "Parameter command_topics and command_code size mismatch!");
+        throw std::runtime_error("Parameter command_topics and command_code size mismatch!");
+    }
+    else{
+        for(size_t i=0; i<custom_command_codes_.size(); i++){
+            int code = custom_command_codes_[i];
+            std::string topic = custom_command_topics_[i];
+            if(code < 0 || code > 0xFFFF){
+                RCLCPP_WARN(this->get_logger(), "Custom command code %d is out of range (0-65535), skipped.", code);
+                continue;
+            }
+            if(topic == ""){
+                RCLCPP_WARN(this->get_logger(), "Custom command topic for code %d is empty, skipped.", code);
+                continue;
+            }
+            default_command_topics[code] = topic;
+            RCLCPP_INFO(this->get_logger(), "Added custom command topic: 0x%04X -> %s", code, topic.c_str());
+        }
+    }
+
+    // 验证 default_command_topics 中是否有重复的topic
+    std::set<std::string> topic_set;
+    for(const auto& pair : default_command_topics){
+        const std::string& topic = pair.second;
+        if(topic_set.find(topic) != topic_set.end()){
+            RCLCPP_ERROR(this->get_logger(), "Duplicate topic name in command topics: %s", topic.c_str());
+            throw std::runtime_error("Duplicate topic name in command topics: " + topic);
+        }
+        topic_set.insert(topic);
+    }
+
+
     try{
         // 创建状态发布者
         image_status_pub_ = this->create_publisher<std_msgs::msg::Bool>(std::string(this->get_name()) + "/image_port_status", 10);
         referee_status_pub_ = this->create_publisher<std_msgs::msg::Bool>(std::string(this->get_name()) + "/referee_port_status", 10);
         // 创建遥控器数据发布者
-        remoto_control_pub_ = this->create_publisher<rm_message::msg::RemoteControl>(std::string(this->get_name()) + "/remote_control", 10);
+        remoto_control_pub_ = this->create_publisher<rm_message::msg::RemoteControl>(std::string(this->get_name()) + remote_control_topic_, 10);
+
+        // 基于 default_command_topics 创建对应的publisher
+        for(const auto& pair : default_command_topics){
+            int code = pair.first;
+            const std::string& topic = pair.second;
+            try{
+                std::string full_topic_name = std::string(this->get_name()) + "/" + topic;
+                auto pub = this->create_publisher<rm_message::msg::GeneralMessage>(full_topic_name, 10);
+                general_pubs_[code] = pub;
+                RCLCPP_INFO(this->get_logger(), "Created publisher for command topic: 0x%04X -> %s", code, full_topic_name.c_str());
+            }
+            catch(const std::exception& e){
+                RCLCPP_ERROR(this->get_logger(), "Exception when create publisher for command topic 0x%04X (%s): %s", code, topic.c_str(), e.what());
+            }
+        }
+
+        // 为没有有创建成功的command topic创建默认的publisher
+        general_pubs_[-1] = this->create_publisher<rm_message::msg::GeneralMessage>(std::string(this->get_name()) + "/unknown_command", 10);
+
     }
     catch(const std::exception& e){
         RCLCPP_ERROR(this->get_logger(), "Exception when create publishers: %s", e.what());
@@ -158,18 +219,7 @@ std::weak_ptr<rclcpp::Publisher<rm_message::msg::GeneralMessage>> RMManagerNode:
         return it->second;
     }
     else{
-        // 创建新的publisher
-        try{
-            std::string topic_name = std::string(this->get_name()) + "/" + uint16_to_hex_string_with_prefix(header);
-            auto pub = this->create_publisher<rm_message::msg::GeneralMessage>(topic_name, 10);
-            general_pubs_[header] = pub;
-            RCLCPP_INFO(this->get_logger(), "Created new publisher for topic: %s", topic_name.c_str());
-            return pub;
-        }
-        catch(const std::exception& e){
-            RCLCPP_ERROR(this->get_logger(), "Exception when create publisher for header 0x%04X: %s", header, e.what());
-            return std::weak_ptr<rclcpp::Publisher<rm_message::msg::GeneralMessage>>();
-        }
+        return general_pubs_[-1];
     }
 
 }
