@@ -83,6 +83,21 @@ RMManagerNode::RMManagerNode(std::string name) : Node(name) {
     }
     RCLCPP_INFO(this->get_logger(), "Publishers initialized.");
 
+    try{
+
+        if(image_port != "" && image_port != "None"){
+            image_uart_ = std::make_shared<SerialCommunicator>(image_port, 921600);
+            image_uart_->register_read_callback( std::bind(&RMManagerNode::_read_callback, this, std::placeholders::_1, std::ref(image_send_)) );
+        }
+        if(referee_port != "" && referee_port != "None" ){
+            referee_uart_ = std::make_shared<SerialCommunicator>(referee_port, 115200);
+            referee_uart_->register_read_callback( std::bind(&RMManagerNode::_read_callback, this, std::placeholders::_1, std::ref(referee_send_)) );
+        }
+    }
+    catch(const std::exception& e){
+        RCLCPP_ERROR(this->get_logger(), "Exception when open port: %s", e.what());
+    }
+    RCLCPP_INFO(this->get_logger(), "Serial ports initialized.");
 
     try{
         // 创建监测图传链路状态的线程
@@ -115,6 +130,14 @@ RMManagerNode::RMManagerNode(std::string name) : Node(name) {
                     if (nomessage_times >= 3) {
                         status_msg.data = false;
                         RCLCPP_WARN(this->get_logger(), "Image link seems offline!");
+                        // 尝试重启串口
+                        if(image_uart_->reopenPort() && image_uart_->startRead()){
+                            RCLCPP_INFO(this->get_logger(), "Image port re-opened and reading started successfully.");
+                        }
+                        else{
+                            nomessage_times=3;
+                            RCLCPP_ERROR(this->get_logger(), "Image port re-open failed.");
+                        }
                     } else {
                         status_msg.data = true;
                     }
@@ -157,6 +180,14 @@ RMManagerNode::RMManagerNode(std::string name) : Node(name) {
                     if (nomessage_times >= 3) {
                         status_msg.data = false;
                         RCLCPP_WARN(this->get_logger(), "Referee link seems offline!");
+                        // 尝试重启串口
+                        if(referee_uart_->reopenPort() && referee_uart_->startRead()){
+                            RCLCPP_INFO(this->get_logger(), "Referee port re-opened and reading started successfully.");
+                        }
+                        else{
+                            nomessage_times=3;
+                            RCLCPP_ERROR(this->get_logger(), "Referee port re-open failed.");
+                        }
                     } else {
                         status_msg.data = true;
                     }
@@ -170,21 +201,6 @@ RMManagerNode::RMManagerNode(std::string name) : Node(name) {
     }
 
     RCLCPP_INFO(this->get_logger(), "Link check threads initialized.");
-        
-    try{
-
-        if(image_port != ""){
-            image_uart_ = std::make_shared<SerialCommunicator>(image_port, 921600);
-            image_uart_->register_read_callback( std::bind(&RMManagerNode::_read_callback, this, std::placeholders::_1, std::ref(image_send_)) );
-        }
-        if(referee_port != ""){
-            referee_uart_ = std::make_shared<SerialCommunicator>(referee_port, 921600);
-            referee_uart_->register_read_callback( std::bind(&RMManagerNode::_read_callback, this, std::placeholders::_1, std::ref(referee_send_)) );
-        }
-    }
-    catch(const std::exception& e){
-        RCLCPP_ERROR(this->get_logger(), "Exception when open port: %s", e.what());
-    }
 
     // 启动串口读取
     image_uart_->startRead();
@@ -290,6 +306,7 @@ void RMManagerNode::_read_callback(const std::vector<uint8_t>& data, std::atomic
         if(auto pub = pub_weak.lock()){
             pub->publish(msg);
         }
+        link_status = true;
 
         start_ptr += work_load;
     }
