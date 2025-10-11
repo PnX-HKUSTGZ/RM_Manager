@@ -40,6 +40,16 @@ private:
     float max_y = 0;
     float max_z = 0;
 
+    float last_x_ = 0;
+    float last_y_ = 0;
+    float last_z_ = 0;
+
+    float delta_x = 0;
+    float delta_y = 0;
+    float delta_z = 0;
+
+    rclcpp::Time last_time_;
+
 };
 
 } // namespace RM_REMOTE_CONTROLLER
