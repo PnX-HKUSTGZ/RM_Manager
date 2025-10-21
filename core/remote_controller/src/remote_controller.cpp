@@ -106,14 +106,14 @@ void RemoteController::sendVel(const rm_message::msg::RemoteControl::SharedPtr m
     double time_diff = (current_time - last_time_).seconds();
     last_time_ = current_time;
 
-    // 限制加速度
-    if (std::abs(desired_x - last_x_) > delta_x*time_diff) {
+    // 限制加速度 允许急停
+    if (std::abs(desired_x) >= 1e-4 && std::abs(desired_x - last_x_) > delta_x*time_diff) {
         desired_x = last_x_ + (desired_x > last_x_ ? delta_x*time_diff : -delta_x*time_diff);
     }
-    if (std::abs(desired_y - last_y_) > delta_y*time_diff) {
+    if (std::abs(desired_y) >= 1e-4 && std::abs(desired_y - last_y_) > delta_y*time_diff) {
         desired_y = last_y_ + (desired_y > last_y_ ? delta_y*time_diff : -delta_y*time_diff);
     }
-    if (std::abs(desired_z - last_z_) > delta_z*time_diff) {
+    if (std::abs(desired_z) >= 1e-4 && std::abs(desired_z - last_z_) > delta_z*time_diff) {
         desired_z = last_z_ + (desired_z > last_z_ ? delta_z*time_diff : -delta_z*time_diff);
     }
 
