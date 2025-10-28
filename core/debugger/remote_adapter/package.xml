@@ -1,0 +1,18 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>remote_adapter</name>
+  <version>0.1.0</version>
+  <description>Forward selected RemoteControl channels to float32 topics with normalization.</description>
+  <maintainer email="pnx@example.com">PnX</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <depend>rclcpp</depend>
+  <depend>std_msgs</depend>
+  <depend>rm_message</depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>
