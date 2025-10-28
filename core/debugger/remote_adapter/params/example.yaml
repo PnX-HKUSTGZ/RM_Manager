@@ -3,8 +3,7 @@ remote_adapter:
     remote_controller_topic: "/rm_manager/remote_control"
     chasis_enable_topic: "/can1_port/enable_motor"
     arm_enable_topic: "/enable_arm"
-    map:
-      channels: [2, 3]
-      topics: ["/speed", "/remote_adapter/vel_y"]
-      max: [0.5, 0.3]
-      invert: [false, true]
+    channels: [2, 3]
+    topics: ["/speed", "/remote_adapter/vel_y"]
+    max: [0.5, 0.3]
+    invert: [false, true]

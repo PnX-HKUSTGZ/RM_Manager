@@ -21,35 +21,39 @@ RemoteAdapter::RemoteAdapter() : Node("remote_adapter") {
   arm_enable_topic_ = this->get_parameter("arm_enable_topic").as_string();
 
   // Try YAML list-based config first: map.channels, map.topics, map.max, map.invert
-  this->declare_parameter<std::vector<int64_t>>("map.channels", std::vector<int64_t>{});
-  this->declare_parameter<std::vector<std::string>>("map.topics", std::vector<std::string>{});
-  this->declare_parameter<std::vector<double>>("map.max", std::vector<double>{});
-  this->declare_parameter<std::vector<bool>>("map.invert", std::vector<bool>{});
+  this->declare_parameter<std::vector<int64_t>>("channels", std::vector<int64_t>{});
+  this->declare_parameter<std::vector<std::string>>("topics", std::vector<std::string>{});
+  this->declare_parameter<std::vector<double>>("max", std::vector<double>{});
+  this->declare_parameter<std::vector<bool>>("invert", std::vector<bool>{});
 
-  auto channels = this->get_parameter("map.channels").as_integer_array();
-  auto topics = this->get_parameter("map.topics").as_string_array();
-  auto maxs = this->get_parameter("map.max").as_double_array();
-  auto inverts = this->get_parameter("map.invert").as_bool_array();
+  auto channels = this->get_parameter("channels").as_integer_array();
+  auto topics = this->get_parameter("topics").as_string_array();
+  auto maxs = this->get_parameter("max").as_double_array();
+  auto inverts = this->get_parameter("invert").as_bool_array();
 
-  bool use_list_mode = !channels.empty() || !topics.empty() || !maxs.empty() || !inverts.empty();
 
-  if (use_list_mode) {
+  // 检查参数是否长度匹配
+  if (channels.size() != topics.size() || channels.size() != maxs.size() || channels.size() != inverts.size()) {
+    RCLCPP_ERROR(this->get_logger(), "Parameter length mismatch: channels(%zu), topics(%zu), max(%zu), invert(%zu)",
+                 channels.size(), topics.size(), maxs.size(), inverts.size());
+    throw std::runtime_error("Parameter length mismatch");
+  }
+
     size_t n = std::max({channels.size(), topics.size(), maxs.size(), inverts.size()});
     if (n == 0) n = std::max<size_t>(channels.size(), topics.size());
     for (size_t i = 0; i < n; ++i) {
-      Mapping m;
-      m.channel = (i < channels.size() ? static_cast<int>(channels[i]) : static_cast<int>(i));
-      m.topic = (i < topics.size() && !topics[i].empty()) ? topics[i] : ("/remote_adapter/chan" + std::to_string(i));
-      m.max = (i < maxs.size() ? maxs[i] : 0.5);
-      m.invert = (i < inverts.size() ? inverts[i] : false);
-      if (!m.topic.empty()) {
-        m.pub = this->create_publisher<std_msgs::msg::Float32>(m.topic, 10);
-      }
-      mappings_.push_back(std::move(m));
-      RCLCPP_INFO(this->get_logger(), "Added mapping (list): channel=%d -> topic=%s (max=%.3f invert=%s)",
-                  m.channel, m.topic.c_str(), m.max, m.invert ? "true" : "false");
+        Mapping m;
+        m.channel = static_cast<int>(channels[i]);
+        m.topic = topics[i];
+        m.max = maxs[i];
+        m.invert = inverts[i];
+        if (!m.topic.empty()) {
+            m.pub = this->create_publisher<std_msgs::msg::Float32>(m.topic, 10);
+        }
+        mappings_.push_back(std::move(m));
+        RCLCPP_INFO(this->get_logger(), "Added mapping (list): channel=%d -> topic=%s (max=%.3f invert=%s)",
+                    m.channel, m.topic.c_str(), m.max, m.invert ? "true" : "false");
     }
-  }
 
   // create enable publishers if topics provided
   if (!chasis_enable_topic_.empty()) {
