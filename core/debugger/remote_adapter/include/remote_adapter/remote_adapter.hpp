@@ -5,13 +5,16 @@
 #include <std_msgs/msg/float32.hpp>
 #include <std_msgs/msg/bool.hpp>
 #include <rm_message/msg/remote_control.hpp>
+#include <realtime_tools/realtime_buffer.hpp>
 
 #include <string>
 #include <vector>
+#include <atomic>
 
 class RemoteAdapter : public rclcpp::Node {
 public:
   explicit RemoteAdapter();
+  ~RemoteAdapter();
 
 private:
   struct Mapping {
@@ -34,6 +37,19 @@ private:
   rclcpp::Subscription<rm_message::msg::RemoteControl>::SharedPtr sub_;
   rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr chasis_enable_pub_;
   rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr arm_enable_pub_;
+
+  // 线程相关
+  std::unique_ptr<std::thread> publish_thread_;
+  bool stop_thread_;
+
+  struct ChannelData {
+    std::vector<float> channel_values;
+    bool chasis_enable;
+    bool arm_enable;
+  };
+  // 实时缓冲区
+  realtime_tools::RealtimeBuffer<struct ChannelData> rt_buffer_;
+  void publish_loop();
 };
 
 #endif  // REMOTE_ADAPTER__REMOTE_ADAPTER_HPP_

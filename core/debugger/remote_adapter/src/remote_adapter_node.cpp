@@ -71,33 +71,76 @@ RemoteAdapter::RemoteAdapter() : Node("remote_adapter") {
     std::bind(&RemoteAdapter::rcCallback, this, std::placeholders::_1));
 
   RCLCPP_INFO(this->get_logger(), "RemoteAdapter initialized. Subscribing to %s", remote_controller_topic_.c_str());
+  
+  // 初始化实时缓冲区
+  ChannelData initial_data;
+  initial_data.channel_values.resize(mappings_.size(), 0.0f);
+  initial_data.chasis_enable = false;
+  initial_data.arm_enable = false;
+  rt_buffer_.writeFromNonRT(initial_data);
+
+  // 启动发布线程
+  publish_thread_ = std::make_unique<std::thread>(&RemoteAdapter::publish_loop, this);
+}
+
+RemoteAdapter::~RemoteAdapter() {
+  stop_thread_ = true;
+  if (publish_thread_ && publish_thread_->joinable()) {
+    publish_thread_->join();
+  }
+}
+
+void RemoteAdapter::publish_loop() {
+  rclcpp::Rate rate(1000);  // 1kHz
+  while (rclcpp::ok() && !stop_thread_) {
+    const auto& data = *rt_buffer_.readFromRT();
+    
+    // 发布通道数据
+    for (size_t i = 0; i < mappings_.size(); ++i) {
+      if (mappings_[i].pub) {
+        std_msgs::msg::Float32 msg;
+        msg.data = data.channel_values[i];
+        mappings_[i].pub->publish(msg);
+      }
+    }
+
+    // 发布使能状态
+    if (chasis_enable_pub_) {
+      std_msgs::msg::Bool msg;
+      msg.data = data.chasis_enable;
+      chasis_enable_pub_->publish(msg);
+    }
+    if (arm_enable_pub_) {
+      std_msgs::msg::Bool msg;
+      msg.data = data.arm_enable;
+      arm_enable_pub_->publish(msg);
+    }
+
+    rate.sleep();
+  }
 }
 
 void RemoteAdapter::rcCallback(const rm_message::msg::RemoteControl::SharedPtr msg) {
-  // publish mapped float topics
-  for (auto &m : mappings_) {
-    if (!m.pub) continue;
-    double raw = get_channel_value(msg, m.channel);
-    double val = (raw - 1024.0) / 660.0 * m.max;
-    if (m.invert) val = -val;
-    std_msgs::msg::Float32 out;
-    out.data = static_cast<float>(val);
-    m.pub->publish(out);
+  // 准备新的通道数据
+  RemoteAdapter::ChannelData new_data;
+  new_data.channel_values.resize(mappings_.size());
+
+  // 计算所有通道的值
+  for (size_t i = 0; i < mappings_.size(); ++i) {
+    if (!mappings_[i].pub) continue;
+    double raw = get_channel_value(msg, mappings_[i].channel);
+    double val = (raw - 1024.0) / 660.0 * mappings_[i].max;
+    if (mappings_[i].invert) val = -val;
+    new_data.channel_values[i] = static_cast<float>(val);
   }
 
-  // enable topics (same logic as remote_controller)
-  if (chasis_enable_pub_) {
-    std_msgs::msg::Bool b;
-    int cut = msg->cut;
-    b.data = (cut == 1 || cut == 2);
-    chasis_enable_pub_->publish(b);
-  }
-  if (arm_enable_pub_) {
-    std_msgs::msg::Bool b;
-    int cut = msg->cut;
-    b.data = (cut == 2);
-    arm_enable_pub_->publish(b);
-  }
+  // 计算使能状态
+  int cut = msg->cut;
+  new_data.chasis_enable = (cut == 1 || cut == 2);
+  new_data.arm_enable = (cut == 2);
+
+  // 写入实时缓冲区
+  rt_buffer_.writeFromNonRT(new_data);
 }
 
 double RemoteAdapter::get_channel_value(const rm_message::msg::RemoteControl::SharedPtr &msg, int idx) {
