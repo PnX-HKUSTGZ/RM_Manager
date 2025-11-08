@@ -87,12 +87,14 @@ RemoteController::RemoteController(std::string name) : rclcpp::Node(name) {
 RemoteController::~RemoteController() {}
 
 void RemoteController::cmdVelCallback(const rm_message::msg::RemoteControl::SharedPtr msg) {
+    updateButtonStates(msg);
     sendVel(msg);
     sendEnableChasis(msg);
     sendEnableArm(msg);
 }
 
 void RemoteController::sendVel(const rm_message::msg::RemoteControl::SharedPtr msg) {
+
     auto twist_msg = geometry_msgs::msg::TwistStamped();
     twist_msg.header.stamp = this->now();
     twist_msg.header.frame_id = "base_link";
@@ -125,6 +127,10 @@ void RemoteController::sendVel(const rm_message::msg::RemoteControl::SharedPtr m
     last_y_ = twist_msg.twist.linear.y;
     last_z_ = twist_msg.twist.angular.z;
 
+    if (button_toggled_[REMOTE_CONTROL_BUTTON::KEYB]) {
+        return;
+    }
+
     cmd_vel_pub_->publish(twist_msg);
     RCLCPP_DEBUG(this->get_logger(), "Published cmd_vel: linear.x=%.3f, angular.z=%.3f", twist_msg.twist.linear.x, twist_msg.twist.angular.z);
 }
@@ -141,6 +147,68 @@ void RemoteController::sendEnableArm(const rm_message::msg::RemoteControl::Share
     enable_msg.data = (std::to_string(msg->cut) == "2");
     arm_enable_pub_->publish(enable_msg);
     RCLCPP_DEBUG(this->get_logger(), "Published arm_enable: %s", enable_msg.data ? "true" : "false");
+}
+
+void RemoteController::updateButtonStates(const rm_message::msg::RemoteControl::SharedPtr msg) {
+
+
+    // 检查某个按钮是否被按下的逻辑实现
+    button_pressed_[REMOTE_CONTROL_BUTTON::STOP] = (last_button_states_[REMOTE_CONTROL_BUTTON::STOP] == 0 && msg->stop == 1);
+    button_pressed_[REMOTE_CONTROL_BUTTON::KEYL] = (last_button_states_[REMOTE_CONTROL_BUTTON::KEYL] == 0 && msg->keyl == 1);
+    button_pressed_[REMOTE_CONTROL_BUTTON::KEYR] = (last_button_states_[REMOTE_CONTROL_BUTTON::KEYR] == 0 && msg->keyr == 1);
+    button_pressed_[REMOTE_CONTROL_BUTTON::KEYB] = (last_button_states_[REMOTE_CONTROL_BUTTON::KEYB] == 0 && msg->keyb == 1);
+    button_pressed_[REMOTE_CONTROL_BUTTON::PRESSL] = (last_button_states_[REMOTE_CONTROL_BUTTON::PRESSL] == 0 && msg->pressl == 1);
+    button_pressed_[REMOTE_CONTROL_BUTTON::PRESSR] = (last_button_states_[REMOTE_CONTROL_BUTTON::PRESSR] == 0 && msg->pressr == 1);
+    button_pressed_[REMOTE_CONTROL_BUTTON::PRESSMID] = (last_button_states_[REMOTE_CONTROL_BUTTON::PRESSMID] == 0 && msg->pressmid == 1);
+    button_pressed_[REMOTE_CONTROL_BUTTON::W] = (last_button_states_[REMOTE_CONTROL_BUTTON::W] == 0 && msg->w == 1);
+    button_pressed_[REMOTE_CONTROL_BUTTON::S] = (last_button_states_[REMOTE_CONTROL_BUTTON::S] == 0 && msg->s == 1);
+    button_pressed_[REMOTE_CONTROL_BUTTON::A] = (last_button_states_[REMOTE_CONTROL_BUTTON::A] == 0 && msg->a == 1);
+    button_pressed_[REMOTE_CONTROL_BUTTON::D] = (last_button_states_[REMOTE_CONTROL_BUTTON::D] == 0 && msg->d == 1);
+    button_pressed_[REMOTE_CONTROL_BUTTON::SHIFT] = (last_button_states_[REMOTE_CONTROL_BUTTON::SHIFT] == 0 && msg->shift == 1);
+    button_pressed_[REMOTE_CONTROL_BUTTON::CTRL] = (last_button_states_[REMOTE_CONTROL_BUTTON::CTRL] == 0 && msg->ctrl == 1);
+    button_pressed_[REMOTE_CONTROL_BUTTON::Q] = (last_button_states_[REMOTE_CONTROL_BUTTON::Q] == 0 && msg->q == 1);
+    button_pressed_[REMOTE_CONTROL_BUTTON::E] = (last_button_states_[REMOTE_CONTROL_BUTTON::E] == 0 && msg->e == 1);
+    button_pressed_[REMOTE_CONTROL_BUTTON::R] = (last_button_states_[REMOTE_CONTROL_BUTTON::R] == 0 && msg->r == 1);
+    button_pressed_[REMOTE_CONTROL_BUTTON::F] = (last_button_states_[REMOTE_CONTROL_BUTTON::F] == 0 && msg->f == 1);
+    button_pressed_[REMOTE_CONTROL_BUTTON::G] = (last_button_states_[REMOTE_CONTROL_BUTTON::G] == 0 && msg->g == 1);
+    button_pressed_[REMOTE_CONTROL_BUTTON::Z] = (last_button_states_[REMOTE_CONTROL_BUTTON::Z] == 0 && msg->z == 1);
+    button_pressed_[REMOTE_CONTROL_BUTTON::X] = (last_button_states_[REMOTE_CONTROL_BUTTON::X] == 0 && msg->x == 1);
+    button_pressed_[REMOTE_CONTROL_BUTTON::C] = (last_button_states_[REMOTE_CONTROL_BUTTON::C] == 0 && msg->c == 1);
+    button_pressed_[REMOTE_CONTROL_BUTTON::V] = (last_button_states_[REMOTE_CONTROL_BUTTON::V] == 0 && msg->v == 1);
+    button_pressed_[REMOTE_CONTROL_BUTTON::B] = (last_button_states_[REMOTE_CONTROL_BUTTON::B] == 0 && msg->b == 1);
+
+    // 更新按钮状态的逻辑实现
+    last_button_states_[REMOTE_CONTROL_BUTTON::STOP] = msg->stop;
+    last_button_states_[REMOTE_CONTROL_BUTTON::KEYL] = msg->keyl;
+    last_button_states_[REMOTE_CONTROL_BUTTON::KEYR] = msg->keyr;
+    last_button_states_[REMOTE_CONTROL_BUTTON::KEYB] = msg->keyb;
+    last_button_states_[REMOTE_CONTROL_BUTTON::PRESSL] = msg->pressl;
+    last_button_states_[REMOTE_CONTROL_BUTTON::PRESSR] = msg->pressr;
+    last_button_states_[REMOTE_CONTROL_BUTTON::PRESSMID] = msg->pressmid;
+    last_button_states_[REMOTE_CONTROL_BUTTON::W] = msg->w;
+    last_button_states_[REMOTE_CONTROL_BUTTON::S] = msg->s;
+    last_button_states_[REMOTE_CONTROL_BUTTON::A] = msg->a;
+    last_button_states_[REMOTE_CONTROL_BUTTON::D] = msg->d;
+    last_button_states_[REMOTE_CONTROL_BUTTON::SHIFT] = msg->shift;
+    last_button_states_[REMOTE_CONTROL_BUTTON::CTRL] = msg->ctrl;
+    last_button_states_[REMOTE_CONTROL_BUTTON::Q] = msg->q;
+    last_button_states_[REMOTE_CONTROL_BUTTON::E] = msg->e;
+    last_button_states_[REMOTE_CONTROL_BUTTON::R] = msg->r;
+    last_button_states_[REMOTE_CONTROL_BUTTON::F] = msg->f;
+    last_button_states_[REMOTE_CONTROL_BUTTON::G] = msg->g;
+    last_button_states_[REMOTE_CONTROL_BUTTON::Z] = msg->z;
+    last_button_states_[REMOTE_CONTROL_BUTTON::X] = msg->x;
+    last_button_states_[REMOTE_CONTROL_BUTTON::C] = msg->c;
+    last_button_states_[REMOTE_CONTROL_BUTTON::V] = msg->v;
+    last_button_states_[REMOTE_CONTROL_BUTTON::B] = msg->b;
+
+    // 更新button_toggled_
+    for (auto &pair : button_pressed_) {
+        REMOTE_CONTROL_BUTTON button = pair.first;
+        if (pair.second) { // 如果按钮被按下
+            button_toggled_[button] = !button_toggled_[button]; // 切换状态
+        }
+    }
 }
 
 } // namespace RM_REMOTE_CONTROLLER
